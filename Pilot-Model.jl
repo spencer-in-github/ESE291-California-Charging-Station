@@ -32,6 +32,7 @@ using GLPK
 using CSV, DataFrames
 using XLSX
 using PrettyTables
+using Random
 
 ###############################
 ######### Define Sets #########
@@ -52,13 +53,13 @@ StationMax = 250000
 Distance = 100
 
 # Extract the X-block and Y-block columns and convert them to vectors
-x_blocks = XLSX.readdata("sample_data.xlsx", "Sheet1", "C2:C101")
-y_blocks = XLSX.readdata("sample_data.xlsx", "Sheet1", "D2:D101")
-pop_blocks = XLSX.readdata("sample_data.xlsx", "Sheet1", "E2:E101")
-VMT_blocks = XLSX.readdata("sample_data.xlsx", "Sheet1", "F2:F101")
-line_blocks = XLSX.readdata("sample_data.xlsx", "Sheet1", "G2:G101")
-energy_blocks = XLSX.readdata("sample_data.xlsx", "Sheet1", "H2:H101")
-cost_blocks = XLSX.readdata("sample_data.xlsx", "Sheet1", "I2:I101")
+#x_blocks = XLSX.readdata("sample_data.xlsx", "Sheet1", "C2:C101")
+#y_blocks = XLSX.readdata("sample_data.xlsx", "Sheet1", "D2:D101")
+pop_blocks = XLSX.readdata("sample_data.xlsx", "Sheet 1", "A2:A101")
+VMT_blocks = XLSX.readdata("sample_data.xlsx", "Sheet 1", "B2:B101")
+#line_blocks = XLSX.readdata("sample_data.xlsx", "Sheet1", "G2:G101")
+#energy_blocks = XLSX.readdata("sample_data.xlsx", "Sheet1", "H2:H101")
+#cost_blocks = XLSX.readdata("sample_data.xlsx", "Sheet1", "I2:I101")
 
 # A 10x10 block grid for sample model run
 num_rows = 10
@@ -68,11 +69,11 @@ num_cols = 10
 ChargerCost = [1.5, 2.5, 43]
 
 # Charging capacity by type in 1,000kWh
-ChargingCapacity = [1,2,3]
+ChargingCapacity = [1, 2, 3]
 
 # Commericial Use Case time series for each hour in a sample week
-CommericialChargingSchedule = XLSX.readdata("sample_ts_data.xlsx", "Sheet1", "C2:C168")
-ResidentialChargingSchedule = XLSX.readdata("sample_ts_data.xlsx", "Sheet1", "D2:D168")
+#CommericialChargingSchedule = XLSX.readdata("sample_ts_data.xlsx", "Sheet1", "C2:C168")
+#ResidentialChargingSchedule = XLSX.readdata("sample_ts_data.xlsx", "Sheet1", "D2:D168")
 
 # Conversion unit from VMT to kWh required
 VMTtokWh = 100
@@ -93,22 +94,43 @@ m = Model(Cbc.Optimizer)
 ####################################
 
 # Number of chargers put in each block grid
-@variable(m, ChargerLocation[1:nTypes, 1:num_rows, 1:num_cols], Int) 
+@variable(m, ChargerLocation[1:nTypes, 1:num_rows, 1:num_cols], Int)
 
 ######################################
 ######## Objective Functions #########
 ######################################
 
 # Single objective for minimizing cost
-@objective(m, Min, sum(sum(energy[i, j] * 100 * ProjectSite[i, j] for i = 1:num_rows) for j = 1:num_cols))
+@objective(m, Min, sum(sum(sum(ChargerLocation[k, i, j] * ChargerCost[k] for k = 1:nTypes) for i = 1:num_rows) for j = 1:num_cols))
 
 ######################################
 ############# Constraints ############
 ######################################
 
 # Number of new charging station constraint
-@constraint(m, sum(sum(sum(ChargerLocation[k,i,j] for k = 1:nTypes) for i=1:num_rows) for j =1:num_cols) < StationMax)
+@constraint(m, sum(sum(sum(ChargerLocation[k, i, j] for k = 1:nTypes) for i = 1:num_rows) for j = 1:num_cols) < StationMax)
 
 # Energy demand/supply constraint
 # The 3x3 grid surrounding a grid should supply 9 times of what the inner grid requires.
-@constraint(m, [l=1:num_rows,p=1:num_cols], sum(sum(sum(ChargerLocation[k,i,j] * ChargingCapacity[k] for k=1:nTypes) for j = max(1,l-2):min(num_cols,p+2)) for j=i = max(1,p-2):min(num_rows,l+2)) >= 9*Demand[l,p])
+@constraint(m, [l = 1:num_rows, p = 1:num_cols], sum(sum(sum(ChargerLocation[k, i, j] * ChargingCapacity[k] for k = 1:nTypes) for j = max(1, l - 2):min(num_cols, p + 2)) for j = i = max(1, p - 2):min(num_rows, l + 2)) >= 9 * Demand[l, p])
+
+######################################
+########### Print and solve ##########
+#####################################
+print(m)
+
+optimize!(m)
+
+ObjValue = objective_value(m);
+OptimalSites = value.(ChargerLocation);
+
+print(ObjValue)
+
+######################################
+############ Plot results ############
+######################################
+# Plotting script using "Plots" package
+
+using Plots
+gr()
+heatmap(OptimalSites, c=:thermal)
