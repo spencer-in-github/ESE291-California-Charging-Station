@@ -13,14 +13,6 @@
 
 import Pkg
 
-Pkg.add("Cbc")
-Pkg.add("Plots")
-Pkg.add("XLSX")
-Pkg.add("DataFrames")
-Pkg.add("PrettyTables")
-Pkg.add("JuMP")
-Pkg.add("GLPK")
-Pkg.add("CSV")
 
 # Initialize JuMP to allow mathematical programming models
 using JuMP
@@ -80,7 +72,7 @@ VMTtokWh = 100
 
 # Energy demand
 Demand = zeros(num_rows, num_cols)
-Demand = reshape(pop_blocks, num_rows, :) .* reshape(VMT_blocks, num_rows, :) * VMTtokWh
+Demand = 0.00001 .* reshape(pop_blocks, num_rows, :) .* reshape(VMT_blocks, num_rows, :) * VMTtokWh
 
 ####################################
 ########## Declare model  ##########
@@ -94,7 +86,7 @@ m = Model(Cbc.Optimizer)
 ####################################
 
 # Number of chargers put in each block grid
-@variable(m, ChargerLocation[1:nTypes, 1:num_rows, 1:num_cols], Int)
+@variable(m, ChargerLocation[1:nTypes, 1:num_rows, 1:num_cols] >= 0)
 
 ######################################
 ######## Objective Functions #########
@@ -108,11 +100,11 @@ m = Model(Cbc.Optimizer)
 ######################################
 
 # Number of new charging station constraint
-@constraint(m, sum(sum(sum(ChargerLocation[k, i, j] for k = 1:nTypes) for i = 1:num_rows) for j = 1:num_cols) < StationMax)
+@constraint(m, sum(sum(sum(ChargerLocation[k, i, j] for k = 1:nTypes) for i = 1:num_rows) for j = 1:num_cols) <= StationMax)
 
 # Energy demand/supply constraint
 # The 3x3 grid surrounding a grid should supply 9 times of what the inner grid requires.
-@constraint(m, [l = 1:num_rows, p = 1:num_cols], sum(sum(sum(ChargerLocation[k, i, j] * ChargingCapacity[k] for k = 1:nTypes) for j = max(1, l - 2):min(num_cols, p + 2)) for j = i = max(1, p - 2):min(num_rows, l + 2)) >= 9 * Demand[l, p])
+@constraint(m, [l = 1:num_rows, p = 1:num_cols], sum(sum(sum(ChargerLocation[k, i, j] * ChargingCapacity[k] * 100000 for k = 1:nTypes) for i = max(1, l - 2):min(num_rows, l + 2)) for j = max(1, p - 2):min(num_rows, p + 2)) >= Demand[l, p])
 
 ######################################
 ########### Print and solve ##########
@@ -125,6 +117,7 @@ ObjValue = objective_value(m);
 OptimalSites = value.(ChargerLocation);
 
 print(ObjValue)
+#pretty_table(OptimalSites)
 
 ######################################
 ############ Plot results ############
@@ -133,4 +126,4 @@ print(ObjValue)
 
 using Plots
 gr()
-heatmap(OptimalSites, c=:thermal)
+heatmap(OptimalSites[2,:,:])
