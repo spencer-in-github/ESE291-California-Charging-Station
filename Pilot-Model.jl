@@ -13,14 +13,14 @@
 
 import Pkg
 
-
 # Initialize JuMP to allow mathematical programming models
 using JuMP
 
-# Initialize MILP solver Cbc
+# Initialize solver Cbc or GLPK
 using Cbc
 using GLPK
 
+# Initialize relevant packages
 using CSV, DataFrames
 using XLSX
 using PrettyTables
@@ -41,10 +41,8 @@ nTypes = length(ChargerTypes)
 # The maximum number of stations
 StationMax = 250000
 
-# The safety distance to a fault [km]
-Distance = 100
 
-# Extract the X-block and Y-block columns and convert them to vectors
+# Extract the the population and VMT (vehicle miles traveled) data information for each block grid
 #x_blocks = XLSX.readdata("sample_data.xlsx", "Sheet1", "C2:C101")
 #y_blocks = XLSX.readdata("sample_data.xlsx", "Sheet1", "D2:D101")
 pop_blocks = XLSX.readdata("sample_data.xlsx", "Sheet 1", "A2:A101")
@@ -70,7 +68,7 @@ ChargingCapacity = [1, 2, 3]
 # Conversion unit from VMT to kWh required
 VMTtokWh = 100
 
-# Energy demand
+# Energy demand for each block grid
 Demand = zeros(num_rows, num_cols)
 Demand = 0.00001 .* reshape(pop_blocks, num_rows, :) .* reshape(VMT_blocks, num_rows, :) * VMTtokWh
 
@@ -104,7 +102,7 @@ m = Model(Cbc.Optimizer)
 
 # Energy demand/supply constraint
 # The 3x3 grid surrounding a grid should supply 9 times of what the inner grid requires.
-@constraint(m, [l = 1:num_rows, p = 1:num_cols], sum(sum(sum(ChargerLocation[k, i, j] * ChargingCapacity[k] * 100000 for k = 1:nTypes) for i = max(1, l - 2):min(num_rows, l + 2)) for j = max(1, p - 2):min(num_rows, p + 2)) >= Demand[l, p])
+@constraint(m, [l = 1:num_rows, p = 1:num_cols], sum(sum(sum(ChargerLocation[k, i, j] * ChargingCapacity[k] * 100000 for k = 1:nTypes) for i = max(1, l - 2):min(num_rows, l + 2)) for j = max(1, p - 2):min(num_rows, p + 2)) >= 9*Demand[l, p])
 
 ######################################
 ########### Print and solve ##########
